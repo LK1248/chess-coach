@@ -4,7 +4,7 @@ const K = { settings: 'cc.settings', games: 'cc.games', analyses: 'cc.analyses' 
 const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const write = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 
-export const DEFAULT_SETTINGS = { chesscom: 'LotanKap', lichess: 'LK1248', perSite: 25, depth: 'normal', autoAnalyze: true };
+export const DEFAULT_SETTINGS = { chesscom: '', lichess: '', perSite: 25, depth: 'normal', autoAnalyze: true };
 export const DEPTHS = { quick: { depth: 10, movetime: 400 }, normal: { depth: 12, movetime: 700 }, deep: { depth: 15, movetime: 1500 } };
 
 export const store = {

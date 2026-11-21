@@ -119,6 +119,7 @@ let filter = 'all';
 let fetching = false;
 async function refreshGames() {
   if (fetching) return;
+  if (!store.settings().chesscom && !store.settings().lichess) { go('#/settings'); return; }
   fetching = true; render({ keepScroll: true });
   const s = store.settings();
   const { games, errors } = await fetchRecentGames({ chesscom: s.chesscom, lichess: s.lichess }, s.perSite);
@@ -395,6 +396,7 @@ function viewSettings() {
   app.innerHTML = `${topbar('Settings', { back: '#/' })}
   <main>
     <form class="card form" id="sf">
+      ${!s.chesscom && !s.lichess ? '<p>Enter your username on one or both sites. It is saved on this device only.</p>' : ''}
       <label>Chess.com username<input name="chesscom" value="${esc(s.chesscom)}" autocomplete="off" autocapitalize="none"></label>
       <label>Lichess username<input name="lichess" value="${esc(s.lichess)}" autocomplete="off" autocapitalize="none"></label>
       <label>Games to get from each site
@@ -417,6 +419,7 @@ function viewSettings() {
     const f = new FormData(e.target);
     store.saveSettings({ ...s, chesscom: f.get('chesscom').trim(), lichess: f.get('lichess').trim(), perSite: +f.get('perSite'), depth: f.get('depth'), autoAnalyze: !!f.get('autoAnalyze') });
     go('#/');
+    if (!store.games().length && (f.get('chesscom').trim() || f.get('lichess').trim())) refreshGames();
   });
 }
 
