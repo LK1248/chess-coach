@@ -6,7 +6,7 @@ mistakes in plain English. Plain HTML/CSS/ES modules, no build step. Phone-first
 ## User decisions
 - NO chess notation anywhere in the UI: describe moves in words ("take their rook with your bishop") + arrows/highlights.
   No board coordinates either.
-- Phase 1 (done): game review + pattern report. Phase 1b (done): "Try it yourself" + step-through lines. Phase 2 (next): drills from the user's own mistakes (spaced
+- Phase 1 (done): game review + pattern report. Phase 1b (done): "Try it yourself" + step-through lines + AI tutor chat. Phase 2 (next): drills from the user's own mistakes (spaced
   repetition) and coached practice games vs a bot at their level that warns before a blunder.
 
 ## Run / test
@@ -22,8 +22,12 @@ mistakes in plain English. Plain HTML/CSS/ES modules, no build step. Phone-first
 - `main.js` hash router: home, game review (`#/game/<key>/<ply>`), report, pattern list, settings; background review queue.
 - `explore.js` Try it yourself: tap-to-move board, engine judges each move via `explain()`; a mistake is held back
   (Try again / Play it anyway); `threatNote`/`captureNote` give the "why it matters" lines in the step-through.
-- Chat idea (not built): an AI tutor chat. Via the user's own API key on GitHub Pages, or via a claude.ai Artifact's
-  `sample` capability (uses their Claude.ai account, but only inside claude.ai, not the installed app). Ground every
-  claim with the engine (pass it as a tool).
+- `tutor.js` + `chat.js` AI tutor (route `#/chat/<key>/<ply>`): Claude API with the user's own key (stored in
+  localStorage, `dangerouslyAllowBrowser`), SDK 1.12.0 vendored in vendor/anthropic (jsDelivr +esm, imports rewritten
+  to local files). Default model Sonnet 5.5, effort medium, `fallbacks: "default"` on Sonnet/Opus. Tools:
+  evaluate_position / try_moves / show_on_board, so claims are engine-checked. Cost per response from `usage`
+  (prices in `MODELS`, cache write 1.25x); spend log `cc.spend`, app-side monthly budget pauses the chat.
+  No normal-key endpoint returns the credit balance, so "left" = budget minus tracked spend; real balance is in the Console.
+  Test with `window.__coachFetch` (mock fetch passed to the SDK) — never a real key in the browser pane.
 - `store.js` localStorage. `board.js` SVG board. `sw.js` network-first app files, cache-first vendor/img.
 - Pieces: cburnett (CC BY-SA, Colin M.L. Burnett) from lichess-org/lila.

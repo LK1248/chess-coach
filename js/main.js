@@ -3,6 +3,8 @@ import { fetchRecentGames } from './games.js';
 import { analyzeGame, positionsOf, CATEGORIES, ANALYSIS_VERSION, describeMove, NAME } from './analyze.js';
 import { createBoard } from './board.js';
 import { startExplore, threatNote, captureNote } from './explore.js';
+import { viewChat } from './chat.js';
+import { MODELS, fmtMoney } from './tutor.js';
 import { Chess } from '../vendor/chess.js';
 
 const app = document.getElementById('app');
@@ -78,6 +80,7 @@ function onAnalysisSaved(key) {
 function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
   if (parts[0] === 'game') return { name: 'game', key: parts[1], ply: parts[2] !== undefined && parts[2] !== '' ? +parts[2] : null };
+  if (parts[0] === 'chat') return { name: 'chat', key: parts[1], ply: +parts[2] || 0 };
   if (parts[0] === 'report') return { name: 'report' };
   if (parts[0] === 'pattern') return { name: 'pattern', cat: parts[1] };
   if (parts[0] === 'settings') return { name: 'settings' };
@@ -97,6 +100,7 @@ function render({ keepScroll = false } = {}) {
   const y = scrollY;
   const r = route();
   if (r.name === 'game') viewGame(r);
+  else if (r.name === 'chat') { const stop = viewChat(app, r, topbar); stopAnim = stop; }
   else if (r.name === 'report') viewReport();
   else if (r.name === 'pattern') viewPattern(r.cat);
   else if (r.name === 'settings') viewSettings();
@@ -212,7 +216,7 @@ function viewGame(r) {
       <p>${esc(moment.text)}</p>
       <div class="legend"><span><i class="sw bad"></i>your move</span>${moment.bestUci && moment.bestUci !== moment.myUci ? '<span><i class="sw good"></i>better move</span>' : ''}${moment.arrows.some((x) => x.color === 'threat') ? '<span><i class="sw threat"></i>their answer</span>' : ''}</div>
       <div class="habit"><b>Habit to build</b><p>${esc(cat.habit)}</p></div>
-      <div class="btns"><button class="pill" data-act="line-punish">▶ What happens next</button>${moment.betterLine.length ? '<button class="pill" data-act="line-better">▶ The better move</button>' : ''}<button class="pill try" data-act="try">♞ Try it yourself</button></div>
+      <div class="btns"><button class="pill" data-act="line-punish">▶ What happens next</button>${moment.betterLine.length ? '<button class="pill" data-act="line-better">▶ The better move</button>' : ''}<button class="pill try" data-act="try">♞ Try it yourself</button><a class="pill ask" href="#/chat/${encodeURIComponent(g.key)}/${ply}">💬 Ask the tutor</a></div>
       <div id="caption" class="caption" hidden></div>
     </section>`;
   } else {
@@ -221,7 +225,7 @@ function viewGame(r) {
     panel = `<section class="card"><p>${last ? `Move ${moveNo(ply - 1)}: ${esc(describeMove(fens[ply - 1], last.from + last.to + (last.promotion || ''), who))}.` : 'Starting position.'}</p>
       ${ply === fens.length - 1 ? `<p class="muted">${res}${g.termination ? ` — ${esc(g.termination.replace(/^.* won /, ''))}` : ''}.</p>` : ''}
       ${moments.length ? '' : '<p class="muted">No big mistakes found in this game. Nice!</p>'}
-      ${ply < fens.length - 1 ? '<div class="btns"><button class="pill try" data-act="try">♞ Try it yourself from here</button></div>' : ''}</section>`;
+      ${ply < fens.length - 1 ? `<div class="btns"><button class="pill try" data-act="try">♞ Try it yourself from here</button><a class="pill ask" href="#/chat/${encodeURIComponent(g.key)}/${ply}">💬 Ask the tutor</a></div>` : ''}</section>`;
   }
 
   app.innerHTML = `${topbar(`vs ${g.opponent}`, { back: '#/' })}
@@ -427,20 +431,46 @@ function viewSettings() {
       <label>How carefully to review
         <select name="depth">${Object.entries({ quick: 'Quick (good for phones)', normal: 'Normal', deep: 'Deep (slow)' }).map(([k, v]) => `<option value="${k}" ${k === s.depth ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label class="check"><input type="checkbox" name="autoAnalyze" ${s.autoAnalyze ? 'checked' : ''}> Review new games automatically</label>
+      <h3 class="formhead">AI tutor (Claude)</h3>
+      <label>Anthropic API key<input name="apiKey" type="password" value="${esc(s.apiKey)}" placeholder="sk-ant-…" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+      <label>Tutor model
+        <select name="tutorModel">${Object.entries(MODELS).map(([id, m]) => `<option value="${id}" ${id === s.tutorModel ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select></label>
+      <label>My monthly budget for the tutor ($)
+        <input name="monthlyBudget" type="number" min="0" step="0.5" inputmode="decimal" value="${esc(s.monthlyBudget)}"></label>
+      <p class="muted small">The tutor pauses itself when this month's spending reaches this amount. 0 = no app limit.</p>
       <button class="primary">Save</button>
     </form>
+    <section class="card">
+      <h3>Tutor spending</h3>
+      <ul class="facts">
+        <li>This month: <b>${fmtMoney(store.monthSpend())}</b>${+s.monthlyBudget ? ` of your ${fmtMoney(+s.monthlyBudget)} budget — <b>${fmtMoney(Math.max(0, +s.monthlyBudget - store.monthSpend()))}</b> left` : ''}</li>
+        <li>All time on this device: ${fmtMoney(store.totalSpend())}</li>
+      </ul>
+      <p class="muted small">Counted by this app from what Anthropic reports for each answer, on this device only. Your actual credit balance is on <a href="https://platform.claude.com/settings/billing" target="_blank" rel="noopener">Anthropic's Billing page</a>, and you can set a hard monthly limit on <a href="https://platform.claude.com/settings/spend-limits" target="_blank" rel="noopener">Spend limits</a>.</p>
+    </section>
+    <details class="card help">
+      <summary>How paying for the tutor works</summary>
+      <ol>
+        <li>Create an account at <a href="https://platform.claude.com" target="_blank" rel="noopener">platform.claude.com</a> (separate from a Claude.ai subscription).</li>
+        <li>On Billing, buy prepaid credits — $5 is plenty to start. Leave auto-reload <b>off</b> if you want a hard stop: when credits run out, the tutor simply stops answering. Nothing is charged after that.</li>
+        <li>Optional: on Spend limits, set a monthly limit (for example $5) as a second safety net.</li>
+        <li>Create an API key (API keys page), copy it, and paste it above. It is stored only on this device.</li>
+      </ol>
+      <p>Each answer costs about 3¢ with Sonnet (Haiku ~0.2¢, Opus ~6¢). The meter in the chat shows the real cost of every answer.</p>
+    </details>
     <section class="card">
       <p class="muted">Changing how carefully games are reviewed only affects new reviews.</p>
       <button class="pill" data-act="reanalyze">Review all games again</button>
       <button class="pill danger" data-act="clear">Delete all data on this device</button>
     </section>
     ${isIOS() && !isStandalone() ? '<section class="card"><p>To install on iPhone: tap Share in Safari, then "Add to Home Screen".</p></section>' : ''}
-    <p class="foot muted">Game review by Stockfish (GPL). Pieces by Colin M.L. Burnett (CC BY-SA). Your games and results stay on this device.</p>
+    <p class="foot muted">Game review by Stockfish (GPL). Tutor by Claude (Anthropic). Pieces by Colin M.L. Burnett (CC BY-SA). Your games and results stay on this device.</p>
   </main>`;
   document.getElementById('sf').addEventListener('submit', (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
-    store.saveSettings({ ...s, chesscom: f.get('chesscom').trim(), lichess: f.get('lichess').trim(), perSite: +f.get('perSite'), depth: f.get('depth'), autoAnalyze: !!f.get('autoAnalyze') });
+    store.saveSettings({ ...s, chesscom: f.get('chesscom').trim(), lichess: f.get('lichess').trim(), perSite: +f.get('perSite'), depth: f.get('depth'), autoAnalyze: !!f.get('autoAnalyze'),
+      apiKey: f.get('apiKey').trim(), tutorModel: f.get('tutorModel'), monthlyBudget: Math.max(0, +f.get('monthlyBudget') || 0) });
     go('#/');
     if (!store.games().length && (f.get('chesscom').trim() || f.get('lichess').trim())) refreshGames();
   });

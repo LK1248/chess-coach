@@ -1,10 +1,11 @@
 // localStorage persistence: settings, fetched games, analyses.
-const K = { settings: 'cc.settings', games: 'cc.games', analyses: 'cc.analyses' };
+const K = { settings: 'cc.settings', games: 'cc.games', analyses: 'cc.analyses', chats: 'cc.chats', spend: 'cc.spend' };
 
 const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const write = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 
-export const DEFAULT_SETTINGS = { chesscom: '', lichess: '', perSite: 25, depth: 'normal', autoAnalyze: true };
+export const DEFAULT_SETTINGS = { chesscom: '', lichess: '', perSite: 25, depth: 'normal', autoAnalyze: true,
+  apiKey: '', tutorModel: 'claude-sonnet-5-5', monthlyBudget: 5 };
 export const DEPTHS = { quick: { depth: 10, movetime: 400 }, normal: { depth: 12, movetime: 700 }, deep: { depth: 15, movetime: 1500 } };
 
 export const store = {
@@ -33,5 +34,22 @@ export const store = {
     this.saveGames(list);
     return list;
   },
+  // ---- tutor chats + spending ----
+  chat(id) { return read(K.chats, {})[id] || { history: [], visible: [], cost: 0 }; },
+  saveChat(id, chat) {
+    const all = read(K.chats, {});
+    all[id] = { ...chat, updatedAt: Date.now() };
+    const ids = Object.keys(all).sort((a, b) => all[b].updatedAt - all[a].updatedAt);
+    for (const old of ids.slice(30)) delete all[old];
+    write(K.chats, all);
+  },
+  addSpend(entry) {
+    const list = read(K.spend, []);
+    list.push({ t: Date.now(), ...entry });
+    write(K.spend, list.slice(-2000));
+  },
+  spendSince(t) { return read(K.spend, []).filter((e) => e.t >= t).reduce((a, e) => a + e.cost, 0); },
+  monthSpend() { const d = new Date(); return this.spendSince(new Date(d.getFullYear(), d.getMonth(), 1).getTime()); },
+  totalSpend() { return this.spendSince(0); },
   clearAll() { Object.values(K).forEach((k) => localStorage.removeItem(k)); },
 };
