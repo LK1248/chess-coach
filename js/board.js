@@ -12,6 +12,15 @@ export function createBoard(container) {
   const svg = el('svg', { viewBox: '0 0 800 800', class: 'board' });
   container.replaceChildren(svg);
   let flipped = false;
+  let clickHandler = null;
+  svg.addEventListener('click', (e) => {
+    if (!clickHandler) return;
+    const r = svg.getBoundingClientRect();
+    let f = Math.floor(((e.clientX - r.left) / r.width) * 8), rank = 7 - Math.floor(((e.clientY - r.top) / r.height) * 8);
+    if (flipped) { f = 7 - f; rank = 7 - rank; }
+    if (f < 0 || f > 7 || rank < 0 || rank > 7) return;
+    clickHandler(String.fromCharCode(97 + f) + (rank + 1));
+  });
 
   const xy = (sq) => {
     let f = sq.charCodeAt(0) - 97, r = +sq[1] - 1;
@@ -38,7 +47,7 @@ export function createBoard(container) {
   /**
    * draw({ fen, flip, arrows:[{from,to,color}], highlights:[{sq,color}], last:{from,to} })
    */
-  function draw({ fen, flip = false, arrows = [], highlights = [], last = null }) {
+  function draw({ fen, flip = false, arrows = [], highlights = [], last = null, selected = null, dots = [] }) {
     flipped = flip;
     svg.replaceChildren();
     const g = el('g');
@@ -48,6 +57,10 @@ export function createBoard(container) {
     if (last) for (const sq of [last.from, last.to]) {
       const [x, y] = xy(sq);
       g.append(el('rect', { x, y, width: 100, height: 100, fill: COLORS.last }));
+    }
+    if (selected) {
+      const [x, y] = xy(selected);
+      g.append(el('rect', { x, y, width: 100, height: 100, fill: 'rgba(108, 176, 255, .55)' }));
     }
     for (const h of highlights) {
       const [x, y] = xy(h.sq);
@@ -65,11 +78,17 @@ export function createBoard(container) {
         fi++;
       }
     });
+    for (const d of dots) {
+      const [x, y] = xy(d.sq);
+      g.append(d.capture
+        ? el('circle', { cx: x + 50, cy: y + 50, r: 44, fill: 'none', stroke: 'rgba(20, 30, 40, .35)', 'stroke-width': 9 })
+        : el('circle', { cx: x + 50, cy: y + 50, r: 15, fill: 'rgba(20, 30, 40, .35)' }));
+    }
     const ag = el('g', { class: 'arrows' });
     for (const a of arrows) arrow(ag, a.from, a.to, a.color);
     g.append(ag);
     svg.append(g);
   }
 
-  return { draw, svg };
+  return { draw, svg, onSquare(fn) { clickHandler = fn; svg.classList.toggle('tappable', !!fn); } };
 }

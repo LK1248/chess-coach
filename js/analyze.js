@@ -8,7 +8,7 @@ export const NAME = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen'
 const opp = (c) => (c === 'w' ? 'b' : 'w');
 
 // Win chance (0..100) for the side to move, the same curve Lichess uses.
-function winChance(e) {
+export function winChance(e) {
   if (e.mate !== null && e.mate !== undefined) return e.mate > 0 ? 100 : 0;
   const cp = Math.max(-1500, Math.min(1500, e.cp ?? 0));
   return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
@@ -124,7 +124,7 @@ export const CATEGORIES = {
 };
 
 // ---------- moment explanation ----------
-function explain({ fen0, san, e0, e1, me, clockLeft, base, ply }) {
+export function explain({ fen0, san, e0, e1, me, clockLeft, base, ply }) {
   const them = opp(me);
   const c0 = new Chess(fen0);
   const m = new Chess(fen0).move(san);

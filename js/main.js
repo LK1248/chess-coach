@@ -2,6 +2,7 @@ import { store, DEPTHS } from './store.js';
 import { fetchRecentGames } from './games.js';
 import { analyzeGame, positionsOf, CATEGORIES, ANALYSIS_VERSION, describeMove, NAME } from './analyze.js';
 import { createBoard } from './board.js';
+import { startExplore, threatNote, captureNote } from './explore.js';
 import { Chess } from '../vendor/chess.js';
 
 const app = document.getElementById('app');
@@ -211,15 +212,16 @@ function viewGame(r) {
       <p>${esc(moment.text)}</p>
       <div class="legend"><span><i class="sw bad"></i>your move</span>${moment.bestUci && moment.bestUci !== moment.myUci ? '<span><i class="sw good"></i>better move</span>' : ''}${moment.arrows.some((x) => x.color === 'threat') ? '<span><i class="sw threat"></i>their answer</span>' : ''}</div>
       <div class="habit"><b>Habit to build</b><p>${esc(cat.habit)}</p></div>
-      <div class="btns"><button class="pill" data-act="line-punish">▶ What happens next</button>${moment.betterLine.length ? '<button class="pill" data-act="line-better">▶ The better move</button>' : ''}</div>
-      <p id="caption" class="caption" hidden></p>
+      <div class="btns"><button class="pill" data-act="line-punish">▶ What happens next</button>${moment.betterLine.length ? '<button class="pill" data-act="line-better">▶ The better move</button>' : ''}<button class="pill try" data-act="try">♞ Try it yourself</button></div>
+      <div id="caption" class="caption" hidden></div>
     </section>`;
   } else {
     const last = verbose[ply - 1];
     const who = last ? ((ply - 1) % 2 === 0 ? 'w' : 'b') === g.color ? 'you' : 'their' : null;
     panel = `<section class="card"><p>${last ? `Move ${moveNo(ply - 1)}: ${esc(describeMove(fens[ply - 1], last.from + last.to + (last.promotion || ''), who))}.` : 'Starting position.'}</p>
       ${ply === fens.length - 1 ? `<p class="muted">${res}${g.termination ? ` — ${esc(g.termination.replace(/^.* won /, ''))}` : ''}.</p>` : ''}
-      ${moments.length ? '' : '<p class="muted">No big mistakes found in this game. Nice!</p>'}</section>`;
+      ${moments.length ? '' : '<p class="muted">No big mistakes found in this game. Nice!</p>'}
+      ${ply < fens.length - 1 ? '<div class="btns"><button class="pill try" data-act="try">♞ Try it yourself from here</button></div>' : ''}</section>`;
   }
 
   app.innerHTML = `${topbar(`vs ${g.opponent}`, { back: '#/' })}
@@ -233,7 +235,7 @@ function viewGame(r) {
       <button data-ply="${Math.min(fens.length - 1, ply + 1)}" aria-label="Forward">▶</button>
       <button data-ply="${fens.length - 1}" aria-label="End">⏭</button>
     </div>
-    ${panel}
+    <div id="panel">${panel}</div>
     ${moments.length ? `<h4 class="sub">Key moments in this game</h4><div class="chips wrap">${moments.map((m) =>
       `<button class="chip ${m.ply === ply ? 'on' : ''} ${m.severity}" data-ply="${m.ply}">Move ${moveNo(m.ply)}</button>`).join('')}</div>` : ''}
     <p class="foot"><a href="${esc(g.url)}" target="_blank" rel="noopener">Open on ${SITE_LABEL[g.site]}</a></p>
@@ -258,41 +260,62 @@ function viewGame(r) {
   const bw = document.getElementById('board');
   bw.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; }, { passive: true });
   bw.addEventListener('touchend', (e) => {
-    if (sx === null) return;
+    if (sx === null || bw.querySelector('.tappable')) { sx = null; return; }
     const dx = e.changedTouches[0].clientX - sx; sx = null;
     if (Math.abs(dx) > 40) setPly(Math.max(0, Math.min(fens.length - 1, ply + (dx < 0 ? 1 : -1))));
   });
 
+  const panelEl = document.getElementById('panel');
+  const tryBtn = app.querySelector('[data-act="try"]');
+  const beginExplore = (fen) => {
+    stopAnim();
+    const saved = panelEl.innerHTML;
+    app.querySelectorAll('.nav, .graph, .sub, .chips.wrap, .foot').forEach((el) => el.setAttribute('hidden', ''));
+    const ctl = startExplore({
+      board, panel: panelEl, fen, me: g.color, flip, opts: { depth: 12, movetime: 600 },
+      onExit: () => render({ keepScroll: true }),
+    });
+    stopAnim = () => ctl.stop();
+    scrollTo({ top: 0, behavior: 'smooth' });
+    return saved;
+  };
+  if (tryBtn) tryBtn.onclick = () => beginExplore(fens[ply]);
+
   if (moment) {
-    const play = (ucis, firstWhose) => {
+    // Step through a line one move at a time, with a short "why" for each move.
+    const play = (ucis) => {
       stopAnim();
-      const cap = document.getElementById('caption');
+      const capEl = document.getElementById('caption');
       const seq = [];
       let fen = fens[ply];
       ucis.forEach((u, i) => {
         const whose = i % 2 === 0 ? 'you' : 'their';
         const text = describeMove(fen, u, whose);
         const c = new Chess(fen);
-        c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
+        try { c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }); } catch { return; }
+        const why = [captureNote(fen, u, g.color), threatNote(c, u.slice(2, 4), g.color)].filter(Boolean).join(' ');
+        seq.push({ fen: c.fen(), last: { from: u.slice(0, 2), to: u.slice(2, 4) }, text, why, myTurnAfter: c.turn() === g.color && !c.isGameOver() });
         fen = c.fen();
-        seq.push({ fen, last: { from: u.slice(0, 2), to: u.slice(2, 4) }, text });
       });
-      let i = 0, timer = null;
-      const step = () => {
-        if (i >= seq.length) { cap.innerHTML += ' <button class="link" data-act="replay">Back to the moment</button>'; return; }
-        const s = seq[i];
-        board.draw({ fen: s.fen, flip, last: s.last });
-        cap.hidden = false;
-        cap.textContent = `${i + 1}. ${s.text.charAt(0).toUpperCase() + s.text.slice(1)}`;
-        i++;
-        timer = setTimeout(step, 1400);
+      let i = 0;
+      const show = () => {
+        const st = seq[i];
+        board.draw({ fen: st.fen, flip, last: st.last, arrows: [{ ...st.last, color: i % 2 === 0 ? 'good' : 'threat' }] });
+        capEl.hidden = false;
+        capEl.innerHTML = `<div class="stepper"><button data-step="-1" ${i === 0 ? 'disabled' : ''} aria-label="Previous step">◀</button>
+          <span>Step ${i + 1} of ${seq.length}</span><button data-step="1" ${i === seq.length - 1 ? 'disabled' : ''} aria-label="Next step">▶</button></div>
+          <p><b>${esc(st.text.charAt(0).toUpperCase() + st.text.slice(1))}.</b></p>
+          ${st.why ? `<p class="why">Why it matters: ${esc(st.why)}</p>` : ''}
+          <div class="btns">${st.myTurnAfter ? '<button class="pill try" data-act="try-here">♞ Try from here</button>' : ''}<button class="link" data-act="replay">Back to the moment</button></div>`;
+        capEl.querySelectorAll('[data-step]').forEach((b) => b.onclick = () => { i = Math.max(0, Math.min(seq.length - 1, i + +b.dataset.step)); show(); });
+        const th = capEl.querySelector('[data-act="try-here"]');
+        if (th) th.onclick = () => beginExplore(st.fen);
       };
-      stopAnim = () => clearTimeout(timer);
-      step();
+      if (seq.length) show();
     };
-    app.querySelector('[data-act="line-punish"]').onclick = () => play([moment.myUci, ...moment.punishLine.slice(0, 5)], 'your');
+    app.querySelector('[data-act="line-punish"]').onclick = () => play([moment.myUci, ...moment.punishLine.slice(0, 7)]);
     const lb = app.querySelector('[data-act="line-better"]');
-    if (lb) lb.onclick = () => play(moment.betterLine.slice(0, 5), 'your');
+    if (lb) lb.onclick = () => play(moment.betterLine.slice(0, 7));
   }
 }
 

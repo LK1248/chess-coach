@@ -1,3 +1,4 @@
+[hidden] { display: none !important; }
 :root {
   --bg: #12161c; --card: #1b2129; --card2: #232a34; --line: #2d3540; --text: #e8ecf1; --muted: #8d98a6;
   --accent: #6cb0ff; --good: #2ea043; --bad: #e5534b; --warn: #d29922; --threat: #f0883e;
@@ -64,6 +65,7 @@ p { margin: .4em 0; }
 
 /* review */
 .review { padding-top: 8px; }
+.review #panel { margin-top: 10px; }
 .boardwrap { width: 100%; aspect-ratio: 1; border-radius: 6px; overflow: hidden; touch-action: pan-y; }
 .board { width: 100%; height: 100%; display: block; }
 .sq-light { fill: var(--light); } .sq-dark { fill: var(--dark); }
@@ -106,3 +108,17 @@ p { margin: .4em 0; }
   background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
 .form .check { display: flex; align-items: center; gap: 10px; color: var(--text); }
 .form .check input { width: 20px; height: 20px; }
+
+/* try it yourself + step-through */
+.board.tappable { cursor: pointer; }
+.pill.try { border-color: var(--accent); color: var(--accent); }
+.stepper { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.stepper button { width: 44px; height: 36px; border: 0; border-radius: 8px; background: var(--card); }
+.stepper button:disabled { opacity: .35; }
+.why { color: #f0b27a; }
+.explore .feed p { margin: 8px 0; }
+.verdict b { display: inline; }
+.verdict.good b { color: #56d364; } .verdict.warn b { color: #e8bf5f; } .verdict.bad b { color: #ff9a94; }
+.reply { background: var(--card2); border-radius: 8px; padding: 8px 10px; }
+.thinking { animation: pulse 1s infinite alternate; }
+@keyframes pulse { from { opacity: .4; } to { opacity: 1; } }
